@@ -43,3 +43,13 @@ def test_unknown_role_and_empty_input_blocked():
     g = InputGuard(FakeBackend())
     assert g.check("hello", "superadmin").category == "invalid_role"
     assert g.check("   ", "general").category == "empty_input"
+
+
+def test_offline_backend_blocks_off_topic_using_only_user_text(docs):
+    from src.guardrails.backend import OfflineRuleBackend
+    from src.targets.mock_target import tokenize
+    backend = OfflineRuleBackend({t for d in docs for t in tokenize(f"{d.title} {d.text}")})
+    guard = InputGuard(backend)
+    v = guard.check("Write me a poem about pirates", "general")   # role text 'general' must not count as in-scope
+    assert v.verdict == "block" and v.category == "off_topic"
+    assert guard.check("What are the ICU visiting hours?", "general").verdict == "allow"

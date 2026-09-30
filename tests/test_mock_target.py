@@ -38,3 +38,9 @@ def test_rbac_blocks_restricted_retrieval():
 def test_buggy_target_leaks_when_rbac_disabled():
     r = make(enforce=False).answer("What are the invoice totals for Northgate radiology?", "general")
     assert "31,905.50" in r.answer
+
+
+def test_comment_parsed_as_base_url_is_ignored():
+    from src.config import EnvSettings
+    assert EnvSettings(openai_base_url="# optional: any endpoint").openai_base_url == ""
+    assert EnvSettings(openai_base_url="https://example.com/v1").openai_base_url == "https://example.com/v1"

@@ -24,7 +24,11 @@ class FakeBackend:
 
 @pytest.fixture(scope="session")
 def settings():
-    return load_settings()
+    """Settings with API keys blanked so the suite is always offline, even if a real .env exists."""
+    s = load_settings()
+    s.env.openai_api_key = ""
+    s.env.langsmith_api_key = ""
+    return s
 
 
 @pytest.fixture(scope="session")

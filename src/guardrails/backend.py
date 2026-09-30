@@ -64,6 +64,9 @@ _SCOPE_EXTRA = {"hospital", "patient", "staff", "clinic", "mediassist", "nurse",
                 "appointment", "visiting", "leave", "salary", "invoice", "dose", "dosage", "claim"}
 
 
+_USER_MSG = re.compile(r"<<<(USER_MESSAGE_[0-9a-f]+)\n(.*?)\n\1>>>", re.S)
+
+
 class OfflineRuleBackend:
     """Deterministic scope/harm check returning the same JSON contract as the LLM guard.
 
@@ -78,7 +81,8 @@ class OfflineRuleBackend:
     def __call__(self, system: str, payload: str) -> str | None:
         if "output guardrail" in system:
             return self._v("allow", "none", "offline output layer defers to deterministic checks", 0.5)
-        text = payload.lower()
+        m = _USER_MSG.search(payload)
+        text = (m.group(2) if m else payload).lower()   # judge only the user's words, not our own wrapper text
         if _HARM.search(text):
             return self._v("block", "harmful", "harmful or abusive content", 0.9)
         words = set(re.findall(r"[a-z0-9]+", text))

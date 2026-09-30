@@ -86,10 +86,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--log-dir", type=Path, default=None, help="where to write events/metrics (default: logs/)")
     ap.add_argument("--live", action="store_true", help="force the live OpenEvals guard model")
+    ap.add_argument("--offline", action="store_true", help="force the offline rule-based guard (no API calls)")
     args = ap.parse_args(argv)
     settings = load_settings()
     docs = load_docs(settings)
-    backend, mode = build_guard_backend(settings, docs, offline=False if args.live else None)
+    backend, mode = build_guard_backend(settings, docs, offline=True if args.offline else (False if args.live else None))
     print(f"Guard mode: {mode}\n")
     failures = 0
     obs = build_observability(settings, args.log_dir)

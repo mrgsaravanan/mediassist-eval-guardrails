@@ -6,8 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -75,6 +74,14 @@ class EnvSettings(BaseSettings):
     langsmith_api_key: str = ""
     langsmith_project: str = "mediassist-eval-guardrails"
 
+    @field_validator("openai_base_url")
+    @classmethod
+    def _valid_base_url(cls, v: str) -> str:
+        """An empty value followed by an inline comment is read by dotenv as the comment text; treat
+        anything that is not an http(s) URL as unset."""
+        v = v.strip()
+        return v if v.startswith(("http://", "https://")) else ""
+
 
 class Settings(BaseModel):
     """Fully resolved application settings."""
@@ -94,7 +101,8 @@ class Settings(BaseModel):
 
 def load_settings(config_path: Path | None = None) -> Settings:
     """Load settings from YAML plus environment. Pass ``config_path`` in tests."""
-    load_dotenv(ROOT / ".env")
+    # .env is read by EnvSettings only; it is deliberately NOT exported into os.environ, so third-party
+    # SDKs never pick up malformed values (e.g. an inline comment parsed as OPENAI_BASE_URL).
     raw = yaml.safe_load((config_path or ROOT / "config.yaml").read_text())
     return Settings(**raw, env=EnvSettings())
 
