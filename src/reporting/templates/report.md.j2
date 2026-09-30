@@ -1,0 +1,140 @@
+# MediAssist Evaluation Report
+
+**Overall verdict: {{ run.verdict }}**  ·  generated {{ run.timestamp }}  ·  {{ run.records|length }} eval items
+
+{% if failed -%}
+**Failed / not-run checks ({{ failed|length }}):**
+{% for c in failed %}
+- `{{ c.name }}` — {{ c.status|upper }}{% if c.value is not none %}: value {{ c.value }}{% endif %}{% if c.threshold is not none %} vs threshold {{ c.threshold }}{% endif %}{% if c.detail %} — {{ c.detail }}{% endif %}{{ "" }}
+{% endfor %}
+{%- else -%}
+All checks passed.
+{%- endif %}
+
+## Run configuration
+
+| Setting | Value |
+|---|---|
+{% for k, v in run.settings_summary.items() -%}
+| {{ k }} | {{ v }} |
+{% endfor %}
+
+## 1. Verdict table
+
+| Check | Status | Value | Threshold | Detail |
+|---|---|---|---|---|
+{% for c in run.checks -%}
+| {{ c.name }} | {{ c.status|upper }} | {{ c.value if c.value is not none else "—" }} | {{ c.threshold if c.threshold is not none else "—" }} | {{ c.detail }} |
+{% endfor %}
+
+## 2. Guardrail decisions
+
+| Layer | Allow | Block | Blocks by category |
+|---|---|---|---|
+| Input guard | {{ gc.input.allow }} | {{ gc.input.block }} | {{ cats(gc.input.block_by_category) }} |
+| Output guard | {{ gc.output.allow }} | {{ gc.output.block }} | {{ cats(gc.output.block_by_category) }} |
+
+Output-guard counts only cover requests that passed the input guard.
+
+## 3. Heuristic checks (deterministic, run first)
+
+{% if run.fail_fast_tripped -%}
+> **FAIL-FAST TRIPPED:** {{ hs.requests_failing }}/{{ hs.requests }} requests ({{ (hs.request_failure_rate*100)|round(1) }}%) failed at least one heuristic, above the {{ (run.settings_summary.fail_fast_heuristic_failure_rate*100)|round(0) }}% limit. RAGAS and the judge were **not run** to avoid wasting LLM calls.
+{%- elif not run.fail_fast_enabled -%}
+> Fail-fast disabled (`--no-fail-fast`). Request failure rate: {{ (hs.request_failure_rate*100)|round(1) }}%.
+{%- else -%}
+Fail-fast not triggered ({{ hs.requests_failing }}/{{ hs.requests }} requests failed any heuristic).
+{%- endif %}
+
+| Check | Passed | Failed | Failing request ids |
+|---|---|---|---|
+{% for name, c in hs.per_check.items() -%}
+| {{ name }} | {{ c.passed }} | {{ c.failed }} | {{ c.failing_request_ids|join(", ") or "—" }} |
+{% endfor %}
+
+Safety pass rate (restricted_refused, no_pii, blocked_no_reason_leak): **{{ hs.safety_pass_rate }}**
+
+## 4. RAGAS
+
+{% if run.ragas -%}
+**Excluded from RAGAS: {{ run.ragas.excluded|length }} of {{ run.records|length }} items.** Rule: items whose correct
+behaviour is a refusal (`should_refuse` or `no_answer`), items blocked by a guardrail, and items where the target
+refused have no answer to score; their correctness is covered by heuristics and the judge.
+
+{% if run.ragas.error %}> RAGAS error: `{{ run.ragas.error }}`{% endif %}
+
+| Metric | Aggregate mean |
+|---|---|
+{% for m, v in run.ragas.aggregate.items() -%}
+| {{ m }} | {{ v if v is not none else "n/a" }} |
+{% endfor %}
+
+| Question | faithfulness | answer_relevancy | context_precision | context_recall |
+|---|---|---|---|---|
+{% for qid, s in run.ragas.per_question.items() -%}
+| {{ qid }} | {{ f(s.faithfulness) }} | {{ f(s.answer_relevancy) }} | {{ f(s.context_precision) }} | {{ f(s.context_recall) }} |
+{% endfor %}
+
+Excluded items: {% for qid, why in run.ragas.excluded.items() %}`{{ qid }}` ({{ why }}){{ ", " if not loop.last }}{% endfor %}
+{%- else -%}
+**RAGAS was not run:** {{ run.ragas_skip_reason }}
+{%- endif %}
+
+## 5. LLM-as-a-Judge
+
+{% if run.judge_summary -%}
+Judge model: `{{ run.settings_summary.judge_model }}` (target: `{{ run.settings_summary.target_model }}`). Scored {{ run.judge_summary.scored }} items; judge errors: {{ run.judge_summary.judge_errors|join(", ") or "none" }}.
+
+| Dimension | Mean (1-5) |
+|---|---|
+{% for d, v in run.judge_summary.means.items() -%}
+| {{ d }} | {{ v if v is not none else "n/a" }} |
+{% endfor %}
+
+**Lowest-scoring items**
+
+{% for l in run.judge_summary.lowest -%}
+- `{{ l.id }}` overall {{ l.overall }} — {{ l.question }} — {{ l.justification }}
+{% endfor %}
+
+{% if run.judge_sanity -%}
+**Judge sanity set** ({{ "PASSED" if run.judge_sanity.passed else "FAILED" }}): wrong-but-confident answers must score low.
+
+| Case | Kind | Overall | Result | Note |
+|---|---|---|---|---|
+{% for c in run.judge_sanity.cases -%}
+| {{ c.id }} | {{ c.kind }} | {{ c.overall if c.overall is not none else "err" }} | {{ "PASS" if c.passed else "FAIL" }} | {{ c.note }} |
+{% endfor %}
+{%- endif %}
+{%- else -%}
+**The judge was not run:** {{ run.judge_skip_reason }}
+{%- endif %}
+
+## 6. Latency and tokens
+
+| Metric | Value |
+|---|---|
+| Latency p50 (ms) | {{ perf.latency_ms_p50 }} |
+| Latency p95 (ms) | {{ perf.latency_ms_p95 }} |
+| Prompt tokens | {{ perf.prompt_tokens }} |
+| Completion tokens | {{ perf.completion_tokens }} |
+| Total tokens | {{ perf.total_tokens }} |
+
+Token counts cover the target chatbot's generation only.
+
+## 7. Worked examples
+
+{% for e in run.examples -%}
+### {{ e.title }}{% if e.seeded %} — SEEDED (deliberately constructed, not natural data){% endif %}
+
+{% for l in e.lines %}- {{ l }}
+{% endfor %}
+{% endfor %}
+
+## Appendix: per-item outcomes
+
+| id | category | role | outcome | sources | failing heuristics |
+|---|---|---|---|---|---|
+{% for r in run.records -%}
+| {{ r.item.id }} | {{ r.item.category }} | {{ r.item.user_role }} | {{ outcome(r) }} | {{ r.sources|join(", ") or "—" }} | {{ failing_h(r.item.id) or "—" }} |
+{% endfor %}

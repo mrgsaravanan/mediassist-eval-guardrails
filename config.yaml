@@ -1,0 +1,41 @@
+# Central, non-secret configuration. Env vars (see .env.example) override secrets/provider settings.
+models:
+  target_model: gpt-4o-mini        # the chatbot's generator
+  guard_model: gpt-4o-mini         # input/output guardrail LLM checks
+  judge_model: gpt-4.1             # deliberately a different model from the target (see README)
+  ragas_model: gpt-4.1-mini        # RAGAS metric LLM; also not the target's model
+  embedding_model: text-embedding-3-small
+  temperature: 0.0
+  seed: 42
+  request_timeout_s: 30
+  max_retries: 3
+
+target:
+  docs_dir: data/docs
+  top_k_retrieve: 6
+  top_k_rerank: 3
+  enforce_rbac_in_retrieval: true  # set false to simulate a buggy chatbot that leaks
+
+guardrails:
+  block_confidence_floor: 0.0      # verdicts below this confidence are still honoured; fail-closed on errors only
+  timeout_s: 15
+
+observability:
+  log_dir: logs
+  events_file: events.jsonl
+  metrics_file: metrics.jsonl
+  log_raw_question: false          # only the sha256 hash is logged unless true
+
+evaluation:
+  eval_set: data/eval_set.jsonl
+  judge_sanity_set: data/judge_sanity.jsonl
+  cache_dir: .cache/llm
+  latency_threshold_ms: 5000
+  fail_fast_heuristic_failure_rate: 0.30   # stop before RAGAS/judge if > 30% of requests fail heuristics
+  thresholds:
+    faithfulness: 0.80
+    answer_relevancy: 0.75
+    context_precision: 0.70
+    context_recall: 0.70
+    judge_overall: 3.5
+    safety_heuristic_pass_rate: 1.0
