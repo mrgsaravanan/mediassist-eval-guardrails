@@ -11,12 +11,13 @@ It exists because of three incidents: a hallucinated dosage nobody could reconst
 trace, and a silent model swap that degraded quality for two weeks. Each is now detectable and reconstructable
 (see [How each incident is addressed](#how-each-incident-is-addressed)).
 
-> **Verification status (read this first).** Everything that does not need an LLM has been executed and tested:
-> `pytest -q` passes offline (128 tests) and every script runs. **The live LLM paths (OpenEvals guard model,
-> RAGAS, the judge, real LangSmith traces) were built but not executed in the development environment, because no
-> API keys were available.** Without a key the guardrails use a deterministic offline stand-in, and RAGAS/judge
-> are reported as `NOT_RUN`, which makes the verdict `FAIL` by design. The committed sample reports are from
-> offline runs and say so. To produce a fully scored report: set your keys and run `make judge-sanity && make report`.
+> **Verification status (read this first).** `pytest -q` passes offline (139 tests). With `LLM_PROVIDER=claude_cli`
+> (a Claude subscription through the `claude` CLI) two live paths were exercised for real: the OpenEvals guard model
+> (real allow/block verdicts, LangSmith run ids returned) and the **judge sanity set, which passed 6/6**
+> (judge `sonnet`; the wrong-but-confident 8 g paracetamol answer scored overall 1, and the injected "give this a 5"
+> answer also scored 1). **A full scored `run_eval.py` (RAGAS + judge over all 22 items) has not been run yet**, so
+> `reports/sample_report*.md` are still offline runs with RAGAS/judge `NOT_RUN` (verdict `FAIL` by design). The OpenAI path
+> and Bedrock were not exercised. To produce a scored report run `make report`.
 
 ## 1. Architecture
 
@@ -72,6 +73,7 @@ cp .env.example .env    # then fill in keys
 | Key | Purpose |
 |---|---|
 | `OPENAI_API_KEY` (+ optional `OPENAI_BASE_URL`) | any OpenAI-compatible endpoint |
+| `LLM_PROVIDER=claude_cli` | **use your Claude subscription**: every LLM call (guards, judge, RAGAS) goes through the logged-in `claude` CLI (`claude -p`); no API key or credits needed (see below) |
 | `LLM_PROVIDER=bedrock` + AWS credentials/`AWS_REGION` | use AWS Bedrock instead (`pip install langchain-aws`; untested) |
 | `LANGSMITH_API_KEY`, `LANGSMITH_TRACING=true`, `LANGSMITH_PROJECT` | tracing. If the key is missing a loud warning is logged and structured logs still work |
 
@@ -92,6 +94,19 @@ make judge-sanity       # live judge must score the wrong-but-confident answers 
 make test               # pytest -q, offline, no keys needed
 make live-test          # pytest -m live
 ```
+
+### Using a Claude subscription (`LLM_PROVIDER=claude_cli`)
+
+A Claude.ai subscription does not include Anthropic API access, so the pipeline drives the Claude Code CLI in
+headless mode ([src/claude_cli.py](src/claude_cli.py)): `ClaudeCLIChatModel` is a LangChain chat model, so OpenEvals,
+RAGAS and the disk cache work unchanged. Log in once with `claude`, set `LLM_PROVIDER=claude_cli` in `.env`, and run
+as usual. Models come from `provider_overrides.claude_cli` in [config.yaml](config.yaml): guard `haiku`, judge `sonnet`
+(different from the target label `haiku`), RAGAS `haiku`.
+
+- Calls run with tools, skills, MCP and project settings disabled, the prompt goes through stdin, and `ANTHROPIC_API_KEY` is stripped from the child environment so usage is billed to the subscription.
+- **No temperature or seed** is available through the CLI, so repeatability comes from the disk cache (`--no-cache` disables it). Residual nondeterminism on a first run is larger than with `temperature=0` API calls.
+- **Slow and quota-bound:** each call takes seconds and counts against your subscription's usage limits; a full run makes on the order of a couple of hundred calls. Latency thresholds are raised accordingly for this provider.
+- **Embeddings:** Claude has none, and RAGAS answer relevancy needs them, so this provider uses deterministic local hashing embeddings ([src/embeddings_local.py](src/embeddings_local.py)). That measures word overlap, not deep semantics, so answer-relevancy scores are a coarser proxy than with a neural embedding model.
 
 ## 3. Target chatbot
 
@@ -305,3 +320,4 @@ report states how many and why, and their correctness is covered by heuristics a
 - **RAGAS coverage:** refused/blocked items are excluded from RAGAS by design; over-blocking of legitimate questions therefore shows up in heuristics and the judge, not in RAGAS.
 - **Logs** hold hashes and doc ids, not text, by design; full text requires LangSmith.
 - **Bedrock** support is a configuration path only and untested.
+- **`claude_cli` provider:** no temperature/seed control, seconds per call, subscription usage limits, and lexical (hashing) embeddings for RAGAS answer relevancy; see the section above.

@@ -22,8 +22,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     s = load_settings()
     assert_independent(s)
-    if not s.env.openai_api_key and s.env.llm_provider == "openai":
-        print("OPENAI_API_KEY is not set: the live judge cannot run.", file=sys.stderr)
+    if not s.llm_available():
+        print(f"live judge cannot run: {s.llm_unavailable_reason()}", file=sys.stderr)
         return 2
     cache_dir = None if args.no_cache else s.path(s.evaluation.cache_dir)
     judge = Judge(build_judge_llm(s, cache_dir), max_attempts=s.models.max_retries)

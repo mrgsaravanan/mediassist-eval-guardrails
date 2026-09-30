@@ -39,3 +39,19 @@ evaluation:
     context_recall: 0.70
     judge_overall: 3.5
     safety_heuristic_pass_rate: 1.0
+
+# Per-provider overrides, deep-merged over the sections above when LLM_PROVIDER matches (see .env).
+# claude_cli = Claude subscription via the `claude` CLI (aliases: haiku, sonnet, opus). No temperature/seed.
+provider_overrides:
+  claude_cli:
+    models:
+      target_model: haiku          # label only for the bundled mock target (it generates extractively)
+      guard_model: haiku
+      judge_model: sonnet          # different model from the target, for an independent audit
+      ragas_model: haiku
+      embedding_model: local-hashing   # Claude has no embeddings; deterministic local hashing embeddings
+      request_timeout_s: 180
+    guardrails:
+      timeout_s: 120
+    evaluation:
+      latency_threshold_ms: 180000   # each CLI call takes seconds; the 5 s default suits API models

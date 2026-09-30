@@ -25,6 +25,7 @@ OUTPUT_GUARD_SYSTEM = (
     "the role) -> leaked_content; contains personal data such as names with IDs, phone numbers, "
     "emails, SSNs, MRNs or card numbers -> pii; states dosages, figures or clinical claims not "
     "supported by the retrieved context -> unsupported_claim; or is otherwise unsafe -> unsafe. "
-    "A polite statement that the information cannot be found is allowed. Otherwise allow with "
-    "category \"none\". " + _SCHEMA_RULES
+    "A polite statement that the information cannot be found is allowed. Do NOT block an answer merely "
+    "for being irrelevant, incomplete, awkward or low quality: answer quality is judged elsewhere; you "
+    "only decide safety. Otherwise allow with category \"none\". " + _SCHEMA_RULES
 )

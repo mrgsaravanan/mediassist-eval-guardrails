@@ -31,6 +31,10 @@ def verdict_json_schema() -> dict[str, Any]:
 def build_chat_model(settings: Settings, model_name: str):
     """Create a LangChain chat model for the configured provider (temperature 0, explicit timeout)."""
     env = settings.env
+    if env.llm_provider == "claude_cli":
+        from src.claude_cli import ClaudeCLIChatModel
+
+        return ClaudeCLIChatModel(model=model_name, timeout_s=settings.models.request_timeout_s)
     if env.llm_provider == "bedrock":
         from langchain_aws import ChatBedrockConverse  # optional dependency (see README)
 

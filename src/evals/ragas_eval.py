@@ -63,6 +63,16 @@ def build_ragas_models(settings: Settings, cache_dir: Path | None) -> tuple[Any,
     from ragas.llms import LangchainLLMWrapper
 
     m, env = settings.models, settings.env
+    if env.llm_provider == "claude_cli":
+        from src.embeddings_local import HashingEmbeddings
+        from src.guardrails.backend import build_chat_model
+
+        chat = build_chat_model(settings, m.ragas_model)
+        chat.cache = disk_cache(cache_dir) or False
+        emb: Any = HashingEmbeddings()
+        if cache_dir is not None:
+            emb = CachedEmbeddings(emb, m.embedding_model, cache_dir)
+        return LangchainLLMWrapper(chat), LangchainEmbeddingsWrapper(emb)
     common = dict(api_key=env.openai_api_key or None, base_url=env.openai_base_url or None)
     chat = ChatOpenAI(model=m.ragas_model, temperature=m.temperature, seed=m.seed, timeout=m.request_timeout_s,
                       max_retries=m.max_retries, cache=disk_cache(cache_dir) or False, **common)

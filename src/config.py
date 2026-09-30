@@ -1,6 +1,7 @@
 """Central configuration: ``config.yaml`` (thresholds, model names) + environment (secrets, provider)."""
 from __future__ import annotations
 
+import shutil
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -66,7 +67,7 @@ class EnvSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
 
-    llm_provider: Literal["openai", "bedrock"] = "openai"
+    llm_provider: Literal["openai", "bedrock", "claude_cli"] = "openai"
     openai_api_key: str = ""
     openai_base_url: str = ""
     aws_region: str = "us-east-1"
@@ -93,6 +94,20 @@ class Settings(BaseModel):
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     env: EnvSettings = Field(default_factory=EnvSettings)
 
+    def llm_available(self) -> bool:
+        """True when the configured provider can be called (key present / CLI installed)."""
+        provider = self.env.llm_provider
+        if provider == "openai":
+            return bool(self.env.openai_api_key)
+        if provider == "claude_cli":
+            return shutil.which("claude") is not None
+        return True
+
+    def llm_unavailable_reason(self) -> str:
+        provider = self.env.llm_provider
+        need = {"openai": "OPENAI_API_KEY", "claude_cli": "the `claude` CLI (logged in)"}.get(provider, "credentials")
+        return f"offline run: {need} not available for LLM_PROVIDER={provider} (or --offline); configure it and re-run"
+
     def path(self, relative: str) -> Path:
         """Resolve a repo-relative path from the config."""
         p = Path(relative)
@@ -104,7 +119,17 @@ def load_settings(config_path: Path | None = None) -> Settings:
     # .env is read by EnvSettings only; it is deliberately NOT exported into os.environ, so third-party
     # SDKs never pick up malformed values (e.g. an inline comment parsed as OPENAI_BASE_URL).
     raw = yaml.safe_load((config_path or ROOT / "config.yaml").read_text())
-    return Settings(**raw, env=EnvSettings())
+    env = EnvSettings()
+    overrides = (raw.pop("provider_overrides", None) or {}).get(env.llm_provider, {})
+    return Settings(**_deep_merge(raw, overrides), env=env)
+
+
+def _deep_merge(base: dict, extra: dict) -> dict:
+    """Recursively merge ``extra`` over ``base`` (used for per-provider model/timeouts overrides)."""
+    out = dict(base)
+    for k, v in extra.items():
+        out[k] = _deep_merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
 
 
 @lru_cache(maxsize=1)

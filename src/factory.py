@@ -19,7 +19,7 @@ def load_docs(settings: Settings) -> list[Document]:
 
 def build_guard_backend(settings: Settings, docs: list[Document], *, offline: bool | None = None) -> tuple[GuardBackend, str]:
     """Return (backend, mode). Uses OpenEvals + a live model when a key exists, else the offline rules."""
-    live = bool(settings.env.openai_api_key) if offline is None else not offline
+    live = settings.llm_available() if offline is None else not offline
     if live:
         return OpenEvalsBackend(build_chat_model(settings, settings.models.guard_model)), "live"
     scope = {t for d in docs for t in tokenize(f"{d.title} {d.text}")}

@@ -48,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     docs = load_docs(s)
     items = load_eval_set(args.eval_set or s.path(s.evaluation.eval_set))
-    live = bool(s.env.openai_api_key) and not args.offline
+    live = s.llm_available() and not args.offline
     cache_dir = None if args.no_cache else s.path(s.evaluation.cache_dir)
 
     if args.target == "external":
@@ -68,13 +68,13 @@ def main(argv: list[str] | None = None) -> int:
         kw["judge"] = Judge(build_judge_llm(s, cache_dir), max_attempts=s.models.max_retries)
         kw["sanity_cases"] = load_sanity(s.path(s.evaluation.judge_sanity_set))
     else:
-        why = "offline run: no OPENAI_API_KEY (or --offline); set a key and re-run to score this metric"
+        why = s.llm_unavailable_reason()
         kw.update(ragas_skip_reason=why, judge_skip_reason=why)
     run = run_evaluation(s, pipeline, items, fail_fast=not args.no_fail_fast,
                          extra_summary={"target": args.target, "guard_mode": guard_mode,
                                         "llm_scoring": "live" if live else "offline (RAGAS/judge not run)",
                                         "cache": "disabled" if args.no_cache else str(s.evaluation.cache_dir),
-                                        "langsmith_tracing": obs.tracer.enabled}, **kw)
+                                        "llm_provider": s.env.llm_provider, "langsmith_tracing": obs.tracer.enabled}, **kw)
     path = write_report(run, args.out)
     print(f"verdict: {run.verdict}   report: {path}")
     for c in run.checks:
